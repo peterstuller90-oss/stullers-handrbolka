@@ -37,6 +37,8 @@ let st = fromTemplate('obal');
 let cur = 'post';
 let photoImg = undefined; // HTMLImageElement | null | undefined
 let photoData = null;
+let photoOrig = null; // originál v plnom rozlíšení (len počas práce), pre tlač na 300 dpi
+const FONT_BYTES = {}; // váha -> ArrayBuffer (pre texty ako krivky v PDF)
 let currentId = null;
 
 /* ---------- úložisko ---------- */
@@ -90,14 +92,14 @@ const Store = (() => {
 /* ---------- fonty ---------- */
 async function loadFonts() {
   if (CFG.fontsFromSupabase && Store.sb) {
-    const files = { 400: 'GoldplayAltRegular.woff2', 600: 'GoldplayAltSemiBold.woff2', 700: 'GoldplayAltBold.woff2' };
+    const files = { 400: 'GoldplayAltRegular.woff', 600: 'GoldplayAltSemiBold.woff', 700: 'GoldplayAltBold.woff' };
     try {
       const { data, error } = await Store.sb.from('handrbolka_assets').select('name,data').in('name', Object.values(files));
       if (error) throw error;
       const byName = Object.fromEntries((data || []).map(r => [r.name, r.data]));
       await Promise.all(Object.entries(files).map(async ([w, f]) => {
         if (!byName[f]) return;
-        const bin = Uint8Array.from(atob(byName[f]), c => c.charCodeAt(0));
+        const bin = Uint8Array.from(atob(byName[f]), c => c.charCodeAt(0)); FONT_BYTES[w] = bin.buffer.slice(0);
         const weights = w === '600' ? ['500', '600'] : [w];
         for (const ww of weights) { const face = new FontFace('GoldplayAlt', bin.buffer.slice(0), { weight: ww }); await face.load(); document.fonts.add(face); }
       }));
@@ -401,8 +403,8 @@ document.querySelectorAll('[role=tab]').forEach(t => t.onclick = () => {
 });
 
 /* fotka */
-function setPhoto(dataUrl) {
-  photoData = dataUrl;
+function setPhoto(dataUrl, orig = null) {
+  photoData = dataUrl; photoOrig = orig;
   if (!dataUrl) { photoImg = null; $('photoPrev').hidden = true; $('photoDel').hidden = true; renderAll(); return; }
   const img = new Image(); img.onload = () => { photoImg = img; $('photoPrev').src = dataUrl; $('photoPrev').hidden = false; $('photoDel').hidden = false; bgHint(); renderAll(); }; img.src = dataUrl;
 }
@@ -416,7 +418,7 @@ function readPhoto(file) {
       const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
       st.photo.on = true; st.photo.zoom = 1; st.photo.x = .5; st.photo.y = .5; syncUI();
-      setPhoto(c.toDataURL('image/jpeg', .86));
+      setPhoto(c.toDataURL('image/jpeg', .86), k < 1 ? img : null);
     };
     img.src = fr.result;
   };
@@ -454,26 +456,78 @@ function fullCanvas(fmtKey, bleedPx = 0) {
   return c;
 }
 const toBlob = (c, type, q) => new Promise(r => c.toBlob(r, type, q));
-async function makePNG(k) { return toBlob(fullCanvas(k), 'image/png'); }
+/* PNG pre sociálne siete: 72 dpi v hlavičke (pHYs), rozmer v pixeloch podľa Instagramu */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = u => { let c = 0xffffffff; for (const b of u) c = CRC_T[(c ^ b) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+async function pngDpi(blob, dpi) {
+  const u = new Uint8Array(await blob.arrayBuffer()); const ppm = Math.round(dpi / .0254);
+  const chunk = new Uint8Array(21), dv = new DataView(chunk.buffer);
+  dv.setUint32(0, 9); chunk.set([112, 72, 89, 115], 4); dv.setUint32(8, ppm); dv.setUint32(12, ppm); chunk[16] = 1;
+  dv.setUint32(17, crc32(chunk.subarray(4, 17)));
+  const at = 33; // za IHDR
+  return new Blob([u.subarray(0, at), chunk, u.subarray(at)], { type: 'image/png' });
+}
+async function makePNG(k) { return pngDpi(await toBlob(fullCanvas(k), 'image/png'), 72); }
+
+/* Tlačové PDF: vektory ostanú vektormi, texty ako krivky, fotky na 300 dpi,
+   voliteľne spadávka 3 mm, orezové značky a TrimBox/BleedBox */
+const PDF_FONT_FILES = { 400: 'GoldplayAltRegular', 500: 'GoldplayAltMedium', 600: 'GoldplayAltSemiBold', 700: 'GoldplayAltBold' };
+let pdfFontCache = null;
+async function pdfFonts() {
+  if (pdfFontCache) return pdfFontCache;
+  if (!window.opentype) return null;
+  const out = {};
+  for (const [w, f] of Object.entries(PDF_FONT_FILES)) {
+    let buf = FONT_BYTES[w];
+    if (!buf) { try { const r = await fetch('fonts/' + f + '.woff'); if (r.ok) buf = await r.arrayBuffer(); } catch (e) {} }
+    if (buf) { try { out[w] = opentype.parse(buf); } catch (e) { console.warn('Font pre PDF', f, e); } }
+  }
+  if (!out[500] && out[600]) out[500] = out[600];
+  if (!out[400] || !out[700]) return null;
+  return (pdfFontCache = out);
+}
+let lastPdfReport = null;
 async function makePDF(k) {
   const fmt = F[k]; const withBleed = $('bleed').checked;
   const { jsPDF } = window.jspdf;
-  const pxPerMm = fmt.W / fmt.mm[0];
-  const bleedMm = withBleed ? 3 : 0, slug = withBleed ? 6 : 0;
-  const c = fullCanvas(k, Math.round(bleedMm * pxPerMm));
-  const pw = fmt.mm[0] + 2 * (bleedMm + slug), ph = fmt.mm[1] + 2 * (bleedMm + slug);
-  const doc = new jsPDF({ unit: 'mm', format: [pw, ph], orientation: 'portrait', compress: true });
-  doc.addImage(c.toDataURL('image/jpeg', .93), 'JPEG', slug, slug, fmt.mm[0] + bleedMm * 2, fmt.mm[1] + bleedMm * 2, undefined, 'FAST');
-  if (withBleed) { // orezové značky
-    doc.setLineWidth(.25); doc.setDrawColor(0);
-    const x0 = slug + bleedMm, y0 = slug + bleedMm, x1 = x0 + fmt.mm[0], y1 = y0 + fmt.mm[1], L = 5, g = bleedMm + .5;
-    [[x0, y0], [x1, y0], [x0, y1], [x1, y1]].forEach(([x, y]) => {
-      const sx = x === x0 ? -1 : 1, sy = y === y0 ? -1 : 1;
-      doc.line(x + sx * g, y, x + sx * (g + L), y); doc.line(x, y + sy * g, x, y + sy * (g + L));
-    });
+  const PT = 72 / 25.4, bleedMm = withBleed ? 3 : 0, slugMm = withBleed ? 10 : 0;
+  const pxPerMm = fmt.W / fmt.mm[0], bleedPx = bleedMm * pxPerMm;
+  const pw = (fmt.mm[0] + 2 * (bleedMm + slugMm)) * PT, ph = (fmt.mm[1] + 2 * (bleedMm + slugMm)) * PT;
+  const doc = new jsPDF({ unit: 'pt', format: [pw, ph], orientation: 'portrait', compress: true, putOnlyUsedFonts: true });
+  const fonts = await pdfFonts();
+  if (!fonts || !window.PDFCanvas) throw new Error('Písmo pre tlač sa nenačítalo. Obnov stránku a skús znova.');
+  const s = PT / pxPerMm, o = slugMm * PT; // pixel plátna -> bod PDF
+  const base = [s, 0, 0, -s, o, ph - o];
+  doc.internal.write('q'); doc.internal.write(base.map(v => +v.toFixed(6)).join(' ') + ' cm');
+  const pc = new PDFCanvas(doc, { base, pageH: ph, fonts, dpi: 300, width: fmt.W + bleedPx * 2, height: fmt.H + bleedPx * 2 });
+  const img = st.photo.on || st.bg === 'foto' ? (photoOrig || photoImg || null) : undefined;
+  HB.render(pc, k, st, { photoImg: img, bleed: bleedPx });
+  doc.internal.write('Q');
+  const info = doc.internal.getPageInfo(1).pageContext;
+  const box = (x0, y0, x1, y1) => ({ bottomLeftX: x0, bottomLeftY: y0, topRightX: x1, topRightY: y1 });
+  const tx0 = (slugMm + bleedMm) * PT, ty0 = tx0, tx1 = pw - tx0, ty1 = ph - ty0;
+  info.trimBox = box(tx0, ty0, tx1, ty1);
+  if (withBleed) {
+    info.bleedBox = box(slugMm * PT, slugMm * PT, pw - slugMm * PT, ph - slugMm * PT);
+    // orezové značky: 0,25 pt, dĺžka 5 mm, začínajú 3 mm od orezu (mimo spadávky)
+    doc.setLineWidth(.25); doc.setDrawColor(0, 0, 0);
+    const off = bleedMm * PT, L = 5 * PT;
+    const X = [tx0, tx1], Y = [ph - ty1, ph - ty0]; // jsPDF: y zhora
+    X.forEach((x, i) => Y.forEach((y, j) => {
+      const sx = i ? 1 : -1, sy = j ? 1 : -1;
+      doc.line(x + sx * off, y, x + sx * (off + L), y);
+      doc.line(x, y + sy * off, x, y + sy * (off + L));
+    }));
   }
   doc.setProperties({ title: 'Handrbolka – ' + fmt.name, creator: 'Handrbolka Štúdio' });
+  lastPdfReport = pc.report;
   return doc.output('blob');
+}
+function pdfNote() {
+  const r = lastPdfReport; if (!r) return '';
+  const low = r.images.filter(i => i.ppi < 280);
+  if (low.length) return ` Pozor: fotka má pri tejto veľkosti len ${Math.min(...low.map(i => i.ppi))} dpi (na tlač treba 300). Nahraj väčšiu fotku.`;
+  return r.images.length ? ' Fotka je v 300 dpi.' : '';
 }
 async function makeVideo(onProg) {
   const fmt = F.reel, fps = 30, dur = st.anim.dur + .8, frames = Math.round(dur * fps);
@@ -520,7 +574,7 @@ async function build(k) {
 let busy = false;
 async function exportOne(k) {
   if (busy) return; busy = true; setBusy(true); toast('Pripravujem ' + F[k].name + '…', true);
-  try { const r = await build(k); await saveFile(r.name, r.blob); }
+  try { lastPdfReport = null; const r = await build(k); await saveFile(r.name, r.blob); const n = F[k].ext === 'pdf' ? pdfNote() : ''; if (n) setTimeout(() => toast(n.trim()), 1800); }
   catch (e) { console.error(e); toast('Export sa nepodaril: ' + (e.message || e)); }
   busy = false; setBusy(false);
 }
@@ -606,5 +660,6 @@ async function start() {
   brand();
   syncUI(); buildMuts(); selectFormat('post'); renderMuts(); renderVars();
 }
+window.HBApp = { build, fullCanvas, pdfNote, get pdfReport() { return lastPdfReport; } }; // pre testy
 start();
 })();

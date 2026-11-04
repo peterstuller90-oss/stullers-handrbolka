@@ -36,7 +36,7 @@ const HB = (() => {
 
   /* ---------- pomocné ---------- */
   const P = new Map();
-  const path = d => { let p = P.get(d); if (!p) { p = new Path2D(d); P.set(d, p); } return p; };
+  const path = d => { let p = P.get(d); if (!p) { p = new Path2D(d); p.__d = d; P.set(d, p); } return p; };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const ease = {
     out: t => 1 - Math.pow(1 - t, 3),

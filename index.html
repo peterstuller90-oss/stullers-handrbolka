@@ -145,14 +145,14 @@ input[type=range]{width:100%;accent-color:var(--green)}
   <div class="menu">
     <button class="btn primary" id="expBtn" aria-haspopup="true" aria-expanded="false">Exportovať ▾</button>
     <div class="pop" id="expPop" hidden>
-      <button data-exp="post">Insta post <small>PNG</small></button>
-      <button data-exp="story">Insta story <small>PNG</small></button>
-      <button data-exp="a4">Plagát A4 <small>PDF na tlač</small></button>
-      <button data-exp="a3">Plagát A3 <small>PDF na tlač</small></button>
+      <button data-exp="post">Insta post <small>PNG, 72 dpi</small></button>
+      <button data-exp="story">Insta story <small>PNG, 72 dpi</small></button>
+      <button data-exp="a4">Plagát A4 <small>PDF na tlač, vektory + 300 dpi</small></button>
+      <button data-exp="a3">Plagát A3 <small>PDF na tlač, vektory + 300 dpi</small></button>
       <button data-exp="reel">Reel intro <small>MP4 video</small></button>
       <hr>
       <button data-exp="all">Všetko naraz <small>ZIP</small></button>
-      <label class="check" style="padding:8px 12px"><input type="checkbox" id="bleed"> PDF so spadávkou 3 mm a orezovými značkami</label>
+      <label class="check" style="padding:8px 12px"><input type="checkbox" id="bleed"> Tlač: spadávka 3 mm + orezové značky</label>
     </div>
   </div>
 </header>
@@ -303,6 +303,8 @@ input[type=range]{width:100%;accent-color:var(--green)}
 <script src="vendor/qrcode.min.js"></script>
 <script src="vendor/mp4-muxer.js"></script>
 <script src="vendor/supabase.js"></script>
+<script src="vendor/opentype.min.js"></script>
+<script src="pdfcanvas.js"></script>
 <script src="config.js"></script>
 <script src="assets.js"></script>
 <script src="engine.js"></script>

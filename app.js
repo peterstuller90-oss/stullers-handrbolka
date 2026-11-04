@@ -187,7 +187,22 @@ function selectFormat(k) {
   $('playerCard').hidden = !F[k].anim; scrubT = null; stopPlay();
   $('scrub').max = st.anim.dur;
   document.querySelectorAll('.mut').forEach((m, i) => m.classList.toggle('on', Object.keys(F)[i] === k));
+  document.querySelectorAll('#fmtChips button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.fmt === k)));
   sizeMain(); renderMain(); renderVarsDebounced();
+}
+
+/* mobil: rýchly prepínač formátu a veľkosti v pripnutom náhľade */
+Object.values(F).forEach(fmt => {
+  const b = document.createElement('button'); b.dataset.fmt = fmt.key; b.textContent = { post: 'Post', story: 'Story', a4: 'A4', a3: 'A3', reel: 'Reel' }[fmt.key] || fmt.name; b.setAttribute('aria-pressed', 'false');
+  b.onclick = () => selectFormat(fmt.key); $('fmtChips').appendChild(b);
+});
+$('bigPrev').onclick = () => {
+  const big = $('mainwrap').classList.toggle('big');
+  $('bigPrev').textContent = big ? '⤡' : '⤢'; const l = big ? 'Zmenšiť náhľad' : 'Zväčšiť náhľad'; $('bigPrev').title = l; $('bigPrev').setAttribute('aria-label', l);
+};
+if (window.visualViewport) { // pri otvorenej klávesnici náhľad zmenšiť, aby bolo vidno aj písané pole
+  const kb = () => document.body.classList.toggle('kb', visualViewport.height < innerHeight * .78);
+  visualViewport.addEventListener('resize', kb);
 }
 
 /* ---------- prehrávanie intra ---------- */
@@ -209,26 +224,83 @@ $('goReel').onclick = play;
 $('scrub').oninput = e => { stopPlay(); scrubT = +e.target.value; $('tOut').textContent = scrubT.toFixed(1).replace('.', ',') + ' s'; renderMain(); };
 
 /* ---------- panel: obsah ---------- */
+const ELEMS = { qr: 'QR kód', obrazok: 'Obrázok' };
+function moveIcons(i) {
+  const up = mkIco('↑', 'Posunúť vyššie', () => { if (i > 0) { [st.blocks[i - 1], st.blocks[i]] = [st.blocks[i], st.blocks[i - 1]]; buildBlocks(); renderAll(); } });
+  const dn = mkIco('↓', 'Posunúť nižšie', () => { if (i < st.blocks.length - 1) { [st.blocks[i + 1], st.blocks[i]] = [st.blocks[i], st.blocks[i + 1]]; buildBlocks(); renderAll(); } });
+  const del = mkIco('×', 'Odstrániť', () => { st.blocks.splice(i, 1); buildBlocks(); renderAll(); });
+  return [up, dn, del];
+}
+function sizeSlider(b, i, def) {
+  const l = document.createElement('label'); l.className = 'f'; l.textContent = 'Veľkosť';
+  const r = document.createElement('input'); r.type = 'range'; r.min = .12; r.max = 1; r.step = .01; r.value = b.size || def; r.id = 'bs' + i;
+  r.oninput = () => { b.size = +r.value; renderAll(false); renderVarsDebounced(); };
+  l.appendChild(r); return l;
+}
 function buildBlocks() {
   const box = $('blocks'); box.innerHTML = '';
   st.blocks.forEach((b, i) => {
     const el = document.createElement('div'); el.className = 'block';
+    const bh = document.createElement('div'); bh.className = 'bh'; const sp = document.createElement('span'); sp.className = 'sp';
+    if (ELEMS[b.type]) {
+      el.classList.add('elem');
+      const nm = document.createElement('b'); nm.className = 'enm'; nm.textContent = ELEMS[b.type];
+      bh.append(nm, sp, ...moveIcons(i)); el.appendChild(bh);
+      if (b.type === 'qr') {
+        const u = document.createElement('input'); u.type = 'text'; u.id = 'bx' + i; u.value = b.text || ''; u.placeholder = 'Odkaz, napr. https://handrbolka.sk'; u.setAttribute('aria-label', 'Odkaz v QR kóde'); u.inputMode = 'url';
+        u.oninput = () => { b.text = u.value; renderAll(false); renderVarsDebounced(); };
+        const c = document.createElement('input'); c.type = 'text'; c.value = b.cap || ''; c.placeholder = 'Popis pod kódom (nepovinné)'; c.setAttribute('aria-label', 'Popis pod QR kódom');
+        c.oninput = () => { b.cap = c.value; renderAll(false); renderVarsDebounced(); };
+        el.append(u, c, sizeSlider(b, i, .32));
+      } else {
+        const row = document.createElement('div'); row.className = 'drop';
+        const im = document.createElement('img'); im.alt = ''; if (b.img) im.src = b.img; else im.hidden = true;
+        const fi = document.createElement('input'); fi.type = 'file'; fi.accept = 'image/*'; fi.hidden = true;
+        const bt = document.createElement('button'); bt.className = 'btn small'; bt.textContent = b.img ? 'Zmeniť obrázok' : 'Vybrať obrázok'; bt.onclick = () => fi.click();
+        const tx = document.createElement('div'); tx.style.flex = '1'; tx.append('Logo partnera, nálepka, kresba… PNG s priehľadným pozadím ostane priehľadné. ', bt);
+        fi.onchange = () => readElemImage(fi.files[0], data => { b.img = data; buildBlocks(); renderAll(); });
+        row.append(im, tx, fi); el.append(row, sizeSlider(b, i, .5));
+      }
+      box.appendChild(el); return;
+    }
     const sel = document.createElement('select'); sel.id = 'bt' + i; sel.setAttribute('aria-label', 'Typ textu');
     Object.entries(TYPES).forEach(([k, n]) => { const o = document.createElement('option'); o.value = k; o.textContent = n; if (k === b.type) o.selected = true; sel.appendChild(o); });
     sel.onchange = () => { b.type = sel.value; renderAll(); };
-    const up = mkIco('↑', 'Posunúť vyššie', () => { if (i > 0) { [st.blocks[i - 1], st.blocks[i]] = [st.blocks[i], st.blocks[i - 1]]; buildBlocks(); renderAll(); } });
-    const dn = mkIco('↓', 'Posunúť nižšie', () => { if (i < st.blocks.length - 1) { [st.blocks[i + 1], st.blocks[i]] = [st.blocks[i], st.blocks[i + 1]]; buildBlocks(); renderAll(); } });
-    const del = mkIco('×', 'Odstrániť text', () => { st.blocks.splice(i, 1); buildBlocks(); renderAll(); });
-    const bh = document.createElement('div'); bh.className = 'bh'; const sp = document.createElement('span'); sp.className = 'sp';
-    bh.append(sel, sp, up, dn, del);
+    bh.append(sel, sp, ...moveIcons(i));
     const ta = document.createElement('textarea'); ta.id = 'bx' + i; ta.value = b.text; ta.rows = b.type === 'odrazky' ? 5 : Math.min(4, Math.max(1, b.text.split('\n').length)); ta.setAttribute('aria-label', TYPES[b.type]);
     ta.oninput = () => { b.text = ta.value; renderAll(false); renderVarsDebounced(); };
     el.append(bh, ta); box.appendChild(el);
   });
 }
+/* obrázok ako prvok: zmenšiť na max 2000 px (na plagáte A3 to stačí na 300 dpi pri šírke do 17 cm), priehľadnosť ostáva */
+function readElemImage(file, done) {
+  if (!file || !file.type.startsWith('image/')) { toast('Toto nie je obrázok. Vyber JPG alebo PNG.'); return; }
+  const fr = new FileReader();
+  fr.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const m = 2000, k = Math.min(1, m / Math.max(img.width, img.height));
+      const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      const g = c.getContext('2d'); g.drawImage(img, 0, 0, c.width, c.height);
+      let alpha = false;
+      if (/png|gif|webp|svg/.test(file.type)) { const d = g.getImageData(0, 0, c.width, c.height).data; for (let j = 3; j < d.length; j += 16) if (d[j] < 250) { alpha = true; break; } }
+      done(alpha ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', .9));
+    };
+    img.onerror = () => toast('Obrázok sa nepodarilo načítať.');
+    img.src = fr.result;
+  };
+  fr.readAsDataURL(file);
+}
+HB.onAsset = () => renderAll(false);
 function mkIco(t, label, fn) { const b = document.createElement('button'); b.className = 'ico'; b.textContent = t; b.title = label; b.setAttribute('aria-label', label); b.onclick = fn; return b; }
 document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
   const t = b.dataset.add;
+  if (t === 'qr') { st.blocks.push({ type: 'qr', text: 'https://handrbolka.sk', cap: '', size: .32 }); buildBlocks(); renderAll(); const u = $('bx' + (st.blocks.length - 1)); if (u) { u.focus(); u.select(); } return; }
+  if (t === 'obrazok') {
+    const fi = document.createElement('input'); fi.type = 'file'; fi.accept = 'image/*';
+    fi.onchange = () => readElemImage(fi.files[0], data => { st.blocks.push({ type: 'obrazok', img: data, size: .5, text: '' }); buildBlocks(); renderAll(); toast('Obrázok pridaný. Veľkosť a poradie zmeníš v jeho bloku.'); });
+    fi.click(); return;
+  }
   const ex = { nadpis: 'Nový nadpis', podnadpis: 'Podnadpis', sekcia: 'Nadpis sekcie', info: 'Piatok 21. 11. · 16:00', odrazky: 'prvá odrážka\ndruhá odrážka', citat: 'Malé kroky, veľké dobrodružstvá', text: 'Krátky text.' }[t];
   st.blocks.push({ type: t, text: ex }); buildBlocks(); renderAll();
   const ta = $('bx' + (st.blocks.length - 1)); if (ta) { ta.focus(); ta.select(); }
@@ -356,6 +428,7 @@ function applyBrief(r) {
   const types = Object.keys(TYPES);
   s.blocks = (Array.isArray(r.blocks) ? r.blocks : []).filter(b => b && types.includes(b.type) && String(b.text || '').trim()).slice(0, 7).map(b => ({ type: b.type, text: String(b.text).trim() }));
   if (!s.blocks.length) s.blocks = [{ type: 'nadpis', text: 'Handrbolka' }];
+  st.blocks.filter(b => ELEMS[b.type]).forEach(b => s.blocks.push(b)); // vložené QR kódy a obrázky ostávajú
   s.layout = pick(r.layout, Object.keys(LAYOUTS), 'stred');
   s.align = pick(r.align, ['center', 'left'], 'center');
   s.bg = pick(r.bg, Object.keys(HB.BGS), 'salvia');

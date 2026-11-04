@@ -158,6 +158,19 @@ const HB = (() => {
     ctx.restore();
   }
 
+  /* obrázky vložené ako samostatné prvky */
+  const IMGC = new Map();
+  function blockImg(src) {
+    if (!src) return null;
+    let im = IMGC.get(src);
+    if (!im) {
+      im = new Image(); im.__alpha = /^data:image\/(png|gif|webp)/.test(src);
+      im.onload = () => { if (typeof api.onAsset === 'function') api.onAsset(); };
+      im.src = src; IMGC.set(src, im);
+    }
+    return im.complete && im.naturalWidth ? im : null;
+  }
+
   /* ---------- rozloženie ---------- */
   const BLOCK = {
     nadpis:   { w: 700, s: 104, lh: 1.04, gap: .55 },
@@ -214,6 +227,22 @@ const HB = (() => {
       };
       if (photoFirst) photoItem();
       blocks.forEach((b, i) => {
+        if (b.type === 'qr' || b.type === 'obrazok') {
+          const sz = clamp(+b.size || (b.type === 'qr' ? .32 : .5), .12, 1);
+          if (b.type === 'qr') {
+            if (!String(b.text || '').trim()) return;
+            const w = Math.min(cw, H * .5) * sz * k; const pad = w * .07;
+            const capSize = b.cap && String(b.cap).trim() ? Math.max(22 * u, w * .11) : 0;
+            add({ type: 'qr', text: String(b.text).trim(), cap: capSize ? String(b.cap).trim() : '', capSize, qw: w, pad, w: w + pad * 2, tw: w + pad * 2, h: w + pad * 2 + (capSize ? capSize * 1.6 : 0), gap: 44 * u * k });
+          } else {
+            const im = blockImg(b.img); if (!b.img) return;
+            const ar = im ? im.naturalHeight / im.naturalWidth : 1;
+            let w = cw * sz * k, h = w * ar;
+            const maxH = availH * .6; if (h > maxH) { h = maxH; w = h / ar; }
+            add({ type: 'obrazok', img: im, w, tw: w, h, gap: 44 * u * k });
+          }
+          return;
+        }
         const B = BLOCK[b.type]; if (!B) return;
         if (!String(b.text || '').trim()) return;
         let size = B.s * u * k * (b.type === 'nadpis' ? st.titleScale : st.textScale);
@@ -262,7 +291,7 @@ const HB = (() => {
     const rects = [];
     items.forEach(it => {
       it.y = y;
-      const w = it.type === 'logo' || it.type === 'photo' ? it.w : it.tw;
+      const w = it.type === 'logo' || it.type === 'photo' || it.type === 'qr' || it.type === 'obrazok' ? it.w : it.tw;
       it.x = left ? side : (W - w) / 2;
       rects.push({ x: it.x - W * .02, y: y - H * .008, w: w + W * .04, h: it.h + H * .016, type: it.type });
       y += it.h + it.gap;
@@ -386,6 +415,23 @@ const HB = (() => {
         drawPhoto(ctx, opt.photoImg, st.photo.frame, L.left ? it.x : (W - it.w) / 2, it.y, it.w, st.photo, fc, 1);
         break;
       }
+      case 'qr': {
+        const x = L.left ? it.x : (W - it.w) / 2;
+        ctx.fillStyle = '#FFFFFF'; roundRect(ctx, x, it.y, it.w, it.w, it.pad * 1.2); ctx.fill();
+        drawQR(ctx, it.text, x + it.pad, it.y + it.pad, it.qw, COL.green);
+        if (it.cap) {
+          ctx.font = font(600, it.capSize); ctx.fillStyle = th.ink; ctx.textBaseline = 'alphabetic';
+          const cw2 = ctx.measureText(it.cap).width;
+          ctx.fillText(it.cap, L.left ? x : (W - cw2) / 2, it.y + it.w + it.capSize * 1.25);
+        }
+        break;
+      }
+      case 'obrazok': {
+        if (!it.img) break;
+        const x = L.left ? it.x : (W - it.w) / 2;
+        ctx.drawImage(it.img, x, it.y, it.w, it.h);
+        break;
+      }
       case 'odrazky': {
         ctx.font = font(it.weight, it.size); ctx.fillStyle = th.ink; ctx.textBaseline = 'alphabetic';
         const bx = L.left ? it.x : (W - it.tw) / 2;
@@ -478,5 +524,6 @@ const HB = (() => {
     };
   }
 
-  return { COL, FORMATS, BGS, DOODLE_SETS, render, layout, drawLogo, drawUnderline, drawDoodle, font };
+  const api = { COL, FORMATS, BGS, DOODLE_SETS, render, layout, drawLogo, drawUnderline, drawDoodle, font, blockImg, onAsset: null };
+  return api;
 })();

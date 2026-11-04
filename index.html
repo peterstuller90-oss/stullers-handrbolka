@@ -60,6 +60,16 @@ input[type=range]{width:100%;accent-color:var(--green)}
 .add{display:flex;flex-wrap:wrap;gap:6px}
 .add button{border:1px dashed var(--muted);background:none;border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600}
 .add button:hover{border-color:var(--green);color:var(--green)}
+.add.elems{align-items:center}
+.add.elems button{border-color:var(--ochre)}
+.block.elem{border-color:var(--ochre)}
+.block .enm{font-size:13px;font-weight:700}
+.block.elem input[type=text]{width:100%}
+.fmtbar{display:none;align-items:center;gap:8px}
+.chips{display:flex;gap:6px;overflow-x:auto;flex:1;scrollbar-width:none;padding:2px}
+.chips::-webkit-scrollbar{display:none}
+.chips button{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600;white-space:nowrap}
+.chips button[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:var(--on-green)}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:6px}
 .cards button{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 6px;font-size:13px;font-weight:600;text-align:center;line-height:1.2}
 .cards button small{display:block;font-weight:500;color:var(--muted);font-size:11px;margin-top:2px}
@@ -124,12 +134,29 @@ input[type=range]{width:100%;accent-color:var(--green)}
 #briefNote{background:var(--surface);border-radius:9px;padding:8px 10px;color:var(--ink)}
 @media (max-width:1150px){.muts{grid-template-columns:repeat(3,minmax(0,1fr))}.vars{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:860px){
-  .work{grid-template-columns:1fr}
-  .panel{border-right:0;border-top:1px solid var(--line);order:2;padding-right:max(16px,env(safe-area-inset-right,0px))}
-  .stage{order:1;padding-left:max(16px,env(safe-area-inset-left,0px))}
-  .muts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  /* mobil: náhľad je stále pripnutý hore, pod ním sa posúvajú úpravy */
+  .top{position:static}
   .brand span{display:none}
-  #main{max-height:62vh}
+  .work{display:flex;flex-direction:column}
+  .stage{display:contents}
+  .stage>.sec{padding-inline:max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-right,0px))}
+  .stage>.sec:first-child{order:1;padding-top:12px}
+  .stagehead h2{font-size:17px}
+  .mainwrap{order:2;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:8px;
+    padding:8px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line);box-shadow:0 8px 16px -12px rgba(31,59,46,.35)}
+  .fmtbar{display:flex}
+  .canvasbox{flex:none;padding:8px;border-radius:12px}
+  #main{max-height:34vh;box-shadow:0 4px 14px rgba(31,59,46,.18)}
+  .mainwrap.big #main{max-height:64vh}
+  body.kb #main{max-height:22vh}
+  .side{flex:none}
+  .side .card:not(#playerCard){display:none}
+  #playerCard{padding:8px 12px}
+  #playerCard h4{display:none}
+  .panel{order:3;border-right:0;padding-top:4px;padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .stage>.sec:nth-child(3){order:4;padding-top:24px;border-top:1px solid var(--line)}
+  .stage>.sec:nth-child(4){order:5;padding-top:16px;padding-bottom:48px}
+  .muts{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -177,7 +204,7 @@ input[type=range]{width:100%;accent-color:var(--green)}
         <select id="tpl"><option value="">Vyber šablónu…</option></select>
       </div>
       <div class="group">
-        <h3>Texty</h3>
+        <h3>Texty a prvky</h3>
         <div class="blocks" id="blocks"></div>
         <div class="add">
           <button data-add="nadpis">+ Nadpis</button>
@@ -188,7 +215,11 @@ input[type=range]{width:100%;accent-color:var(--green)}
           <button data-add="citat">+ Citát</button>
           <button data-add="text">+ Malý text</button>
         </div>
-        <p class="hint">Nový riadok spravíš klávesom Enter. Pri odrážkach je každý riadok jedna odrážka. Poradie meníš šípkami.</p>
+        <div class="add elems"><span class="hint">Prvky:</span>
+          <button data-add="qr">+ QR kód</button>
+          <button data-add="obrazok">+ Obrázok</button>
+        </div>
+        <p class="hint">Nový riadok spravíš klávesom Enter. Pri odrážkach je každý riadok jedna odrážka. Poradie meníš šípkami, rovnako aj pri QR kódoch a obrázkoch.</p>
       </div>
       <div class="group">
         <h3>Logo</h3>
@@ -254,7 +285,8 @@ input[type=range]{width:100%;accent-color:var(--green)}
         <label class="check"><input type="checkbox" id="safeOn"> Ukázať okraje Instagramu</label>
         <button class="btn small" id="expMain">Exportovať tento</button></div>
     </div>
-    <div class="mainwrap">
+    <div class="mainwrap" id="mainwrap">
+      <div class="fmtbar" role="group" aria-label="Formát náhľadu"><div class="chips" id="fmtChips"></div><button class="ico" id="bigPrev" aria-label="Zväčšiť náhľad" title="Zväčšiť náhľad">⤢</button></div>
       <div class="canvasbox" id="canvasbox"><canvas id="main" width="540" height="675" aria-label="Náhľad návrhu"></canvas></div>
       <div class="side">
         <div class="card" id="playerCard" hidden>

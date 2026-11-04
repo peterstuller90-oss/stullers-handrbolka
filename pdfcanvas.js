@@ -195,11 +195,12 @@
       let src = img, sw = iw, sh = ih;
       if (iw > tw * 1.05 || ih > th * 1.05) { sw = tw; sh = th; }
       const c = document.createElement('canvas'); c.width = sw; c.height = sh; const g = c.getContext('2d');
-      g.imageSmoothingQuality = 'high'; g.fillStyle = '#fff'; g.fillRect(0, 0, sw, sh); g.drawImage(src, 0, 0, sw, sh);
-      const data = c.toDataURL('image/jpeg', .92);
+      g.imageSmoothingQuality = 'high'; if (!img.__alpha) { g.fillStyle = '#fff'; g.fillRect(0, 0, sw, sh); } g.drawImage(src, 0, 0, sw, sh);
+      const fmtI = img.__alpha ? 'PNG' : 'JPEG';
+      const data = img.__alpha ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', .92);
       this.report.images.push({ ppi: Math.round(Math.min(sw / wIn, sh / hIn)), source: Math.round(Math.min(iw / wIn, ih / hIn)), w: sw, h: sh });
       this.w('q'); this.w(inv(T).map(N).join(' ') + ' cm');
-      this.doc.addImage(data, 'JPEG', x0, this.pageH - y1, x1 - x0, y1 - y0, 'img' + this.report.images.length, 'NONE');
+      this.doc.addImage(data, fmtI, x0, this.pageH - y1, x1 - x0, y1 - y0, 'img' + this.report.images.length, img.__alpha ? 'FAST' : 'NONE');
       this.w('Q');
     }
   }

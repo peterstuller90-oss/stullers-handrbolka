@@ -170,7 +170,7 @@ function renderVars() {
   const box = $('vars'); box.innerHTML = '';
   variantStates().forEach((s, i) => {
     const b = document.createElement('button'); b.setAttribute('aria-label', 'Použiť variáciu ' + (i + 1));
-    const c = document.createElement('canvas'); const fmt = F[cur === 'reel' ? 'story' : cur]; const k = 220 / fmt.H; c.width = Math.round(fmt.W * k); c.height = 220;
+    const c = document.createElement('canvas'); const fmt = F[cur === 'reel' ? 'story' : cur === 'igvid' ? 'post' : cur]; const k = 220 / fmt.H; c.width = Math.round(fmt.W * k); c.height = 220;
     b.appendChild(c); box.appendChild(b);
     drawTo(c, fmt.key, { state: s });
     b.onclick = () => { const keep = { blocks: st.blocks, photo: { ...s.photo, zoom: st.photo.zoom, x: st.photo.x, y: st.photo.y } }; st = { ...s, ...keep }; syncUI(); renderAll(); toast('Variácia použitá'); };
@@ -222,7 +222,7 @@ mainC.addEventListener('pointerup', endDrag); mainC.addEventListener('pointercan
 
 /* mobil: rýchly prepínač formátu a veľkosti v pripnutom náhľade */
 Object.values(F).forEach(fmt => {
-  const b = document.createElement('button'); b.dataset.fmt = fmt.key; b.textContent = { post: 'Post', story: 'Story', a4: 'A4', a3: 'A3', reel: 'Reel' }[fmt.key] || fmt.name; b.setAttribute('aria-pressed', 'false');
+  const b = document.createElement('button'); b.dataset.fmt = fmt.key; b.textContent = { post: 'Post', igvid: 'Post video', story: 'Story', reel: 'Story video', a4: 'A4', a3: 'A3' }[fmt.key] || fmt.name; b.setAttribute('aria-pressed', 'false');
   b.onclick = () => selectFormat(fmt.key); $('fmtChips').appendChild(b);
 });
 $('bigPrev').onclick = () => {
@@ -237,7 +237,7 @@ if (window.visualViewport) { // pri otvorenej klávesnici náhľad zmenšiť, ab
 /* ---------- prehrávanie intra ---------- */
 function stopPlay() { playing = false; $('playBtn').textContent = '▶'; $('playBtn').setAttribute('aria-label', 'Prehrať'); }
 function play() {
-  if (cur !== 'reel') selectFormat('reel');
+  if (!F[cur].anim) selectFormat('reel');
   playing = true; playT0 = performance.now(); $('playBtn').textContent = '❚❚'; $('playBtn').setAttribute('aria-label', 'Pozastaviť');
   const step = now => {
     if (!playing) return;
@@ -484,7 +484,7 @@ $('briefBtn').onclick = async () => {
   try {
     const r = await askClaude(brief);
     st = applyBrief(r || {}); currentId = null; syncSave();
-    syncUI(); renderAll(); selectFormat(cur === 'reel' ? 'post' : cur);
+    syncUI(); renderAll(); selectFormat(F[cur].anim ? 'post' : cur);
     $('briefNote').textContent = (r && r.poznamka ? r.poznamka + ' ' : '') + (st.photo.on && !photoImg ? 'Nahraj ešte fotku nižšie.' : 'Čokoľvek nižšie môžeš zmeniť.');
     $('briefNote').hidden = false; $('briefState').textContent = '';
     try { localStorage.setItem('hb_brief', brief); } catch (e) {}
@@ -506,7 +506,7 @@ $('tpl').onchange = e => { if (!e.target.value) return; const keepPhoto = st.pho
 document.querySelectorAll('[role=tab]').forEach(t => t.onclick = () => {
   document.querySelectorAll('[role=tab]').forEach(x => x.setAttribute('aria-selected', String(x === t)));
   document.querySelectorAll('[data-pane]').forEach(p => p.hidden = p.dataset.pane !== t.dataset.tab);
-  if (t.dataset.tab === 'anim' && cur !== 'reel') selectFormat('reel');
+  if (t.dataset.tab === 'anim' && !F[cur].anim) selectFormat('reel');
 });
 
 /* fotka */
@@ -636,10 +636,10 @@ function pdfNote() {
   if (low.length) return ` Pozor: fotka má pri tejto veľkosti len ${Math.min(...low.map(i => i.ppi))} dpi (na tlač treba 300). Nahraj väčšiu fotku.`;
   return r.images.length ? ' Fotka je v 300 dpi.' : '';
 }
-async function makeVideo(onProg) {
-  const fmt = F.reel, fps = 30, dur = st.anim.dur + .8, frames = Math.round(dur * fps);
+async function makeVideo(k, onProg) {
+  const fmt = F[k], fps = 30, dur = st.anim.dur + .8, frames = Math.round(dur * fps);
   const c = document.createElement('canvas'); c.width = fmt.W; c.height = fmt.H; const ctx = c.getContext('2d');
-  const frame = t => { ctx.setTransform(1, 0, 0, 1, 0, 0); HB.render(ctx, 'reel', st, { photoImg: st.bg === 'foto' ? (photoImg || null) : undefined, t }); };
+  const frame = t => { ctx.setTransform(1, 0, 0, 1, 0, 0); HB.render(ctx, k, st, { photoImg: st.bg === 'foto' ? (photoImg || null) : undefined, t }); };
   if (window.VideoEncoder && window.Mp4Muxer) {
     try {
       const sup = await VideoEncoder.isConfigSupported({ codec: 'avc1.640028', width: fmt.W, height: fmt.H, bitrate: 8e6, framerate: fps });
@@ -672,11 +672,34 @@ async function makeVideo(onProg) {
   rec.stop(); await done;
   return { blob: new Blob(parts, { type: mime.split(';')[0] }), ext: mime.includes('mp4') ? 'mp4' : 'webm' };
 }
+/* názvy súborov: krátka téma + formát, napr. „den otv. dveri - ig.png“ */
+const SUFFIX = { post: 'ig', igvid: 'ig vid', story: 'igs', reel: 'igs vid', a4: 'a4 plagat', a3: 'a3 plagat' };
+const STOP = new Set(['a', 'i', 'v', 'vo', 'na', 's', 'so', 'z', 'zo', 'do', 'pre', 'k', 'ku', 'o', 'u', 'od', 'pri', 'za', 'sa', 'si', 'handrbolka', 'handrbolke', 'handrbolky', 'handrbolku', 'handrbolkou']);
+const plain = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+function shortWord(w) {
+  if (w.length <= 6 || /\d/.test(w)) return w;
+  const V = /[aeiouy]/; let i = 0;
+  while (i < w.length && !V.test(w[i])) i++;
+  const maxC = i >= 2 ? 1 : 2; // škol., slav. / otv., tekv.
+  while (i < w.length && V.test(w[i])) i++;
+  let c = 0; while (i < w.length && !V.test(w[i]) && c < maxC) { i++; c++; }
+  return w.slice(0, Math.max(3, i)) + '.';
+}
+function autoTheme() {
+  const src = (st.blocks.find(b => (b.type === 'nadpis' || b.type === 'sekcia') && (b.text || '').trim()) || st.blocks.find(b => !ELEMS[b.type] && (b.text || '').trim()) || {}).text || 'handrbolka';
+  const words = plain(src.split('\n')[0]).replace(/\//g, '-').replace(/[^a-z0-9\- ]+/g, ' ').split(/\s+/).filter(w => w && !STOP.has(w));
+  return words.slice(0, 4).map(shortWord).join(' ') || 'handrbolka';
+}
+const theme = () => plain(st.fileTheme || '').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 40) || autoTheme();
+const fileName = (k, ext) => `${theme()} - ${SUFFIX[k] || k}${F[k].print && $('bleed').checked ? ' 3mm spad' : ''}.${ext}`;
+function syncTheme() { const i = $('fileTheme'); i.placeholder = autoTheme(); if (document.activeElement !== i) i.value = st.fileTheme || ''; $('fileEx').textContent = fileName(cur, F[cur].ext); }
+$('fileTheme').oninput = e => { st.fileTheme = e.target.value; syncTheme(); persistDraft(); };
+$('bleed').addEventListener('change', syncTheme);
 async function build(k) {
-  if (F[k].ext === 'png') return { blob: await makePNG(k), name: `handrbolka-${slug()}-${k}.png` };
-  if (F[k].ext === 'pdf') return { blob: await makePDF(k), name: `handrbolka-${slug()}-${k}${$('bleed').checked ? '-spadavka' : ''}.pdf` };
-  const v = await makeVideo(p => toast('Vyrábam video… ' + Math.round(p * 100) + ' %', true));
-  return { blob: v.blob, name: `handrbolka-${slug()}-reel-intro.${v.ext}` };
+  if (F[k].ext === 'png') return { blob: await makePNG(k), name: fileName(k, 'png') };
+  if (F[k].ext === 'pdf') return { blob: await makePDF(k), name: fileName(k, 'pdf') };
+  const v = await makeVideo(k, p => toast('Vyrábam ' + F[k].name.toLowerCase() + '… ' + Math.round(p * 100) + ' %', true));
+  return { blob: v.blob, name: fileName(k, v.ext) };
 }
 let busy = false;
 async function exportOne(k) {
@@ -691,12 +714,12 @@ async function exportAll() {
     const zip = new JSZip();
     for (const k of Object.keys(F)) { toast('Pripravujem ' + F[k].name + '…', true); const r = await build(k); zip.file(r.name, r.blob); }
     toast('Balím ZIP…', true);
-    await saveFile(`handrbolka-${slug()}-vsetky-formaty.zip`, await zip.generateAsync({ type: 'blob' }));
+    await saveFile(`${theme()} - vsetky formaty.zip`, await zip.generateAsync({ type: 'blob' }));
   } catch (e) { console.error(e); toast('Export sa nepodaril: ' + (e.message || e)); }
   busy = false; setBusy(false);
 }
 function setBusy(b) { ['expBtn', 'expMain'].forEach(id => $(id).disabled = b); }
-$('expBtn').onclick = e => { e.stopPropagation(); const p = $('expPop'); p.hidden = !p.hidden; $('expBtn').setAttribute('aria-expanded', String(!p.hidden)); };
+$('expBtn').onclick = e => { e.stopPropagation(); const p = $('expPop'); p.hidden = !p.hidden; if (!p.hidden) syncTheme(); $('expBtn').setAttribute('aria-expanded', String(!p.hidden)); };
 document.addEventListener('click', e => { if (!$('expPop').hidden && !e.target.closest('.menu')) { $('expPop').hidden = true; $('expBtn').setAttribute('aria-expanded', 'false'); } });
 document.querySelectorAll('[data-exp]').forEach(b => b.onclick = () => { $('expPop').hidden = true; b.dataset.exp === 'all' ? exportAll() : exportOne(b.dataset.exp); });
 $('expMain').onclick = () => exportOne(cur);

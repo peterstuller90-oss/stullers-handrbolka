@@ -6,10 +6,11 @@ const HB = (() => {
   const FONT = 'GoldplayAlt';
   const FORMATS = {
     post:  { key: 'post',  name: 'Insta post',  sub: '1080 × 1350 px', W: 1080, H: 1350, ext: 'png', online: true },
+    igvid: { key: 'igvid', name: 'Insta video', sub: '1080 × 1350 px · video', W: 1080, H: 1350, ext: 'mp4', online: true, anim: true },
     story: { key: 'story', name: 'Insta story', sub: '1080 × 1920 px', W: 1080, H: 1920, ext: 'png', online: true, safeTop: 250, safeBot: 340 },
+    reel:  { key: 'reel',  name: 'Story / reel video',  sub: '1080 × 1920 px · video', W: 1080, H: 1920, ext: 'mp4', online: true, anim: true, safeTop: 250, safeBot: 360 },
     a4:    { key: 'a4',    name: 'Plagát A4',   sub: '210 × 297 mm',   W: 2480, H: 3508, ext: 'pdf', mm: [210, 297], print: true },
-    a3:    { key: 'a3',    name: 'Plagát A3',   sub: '297 × 420 mm',   W: 3508, H: 4961, ext: 'pdf', mm: [297, 420], print: true },
-    reel:  { key: 'reel',  name: 'Reel intro',  sub: '1080 × 1920 px · video', W: 1080, H: 1920, ext: 'mp4', online: true, anim: true, safeTop: 250, safeBot: 360 }
+    a3:    { key: 'a3',    name: 'Plagát A3',   sub: '297 × 420 mm',   W: 3508, H: 4961, ext: 'pdf', mm: [297, 420], print: true }
   };
   const BGS = {
     salvia: { name: 'Šalvia',  bg: COL.salvia, ink: COL.green, soft: COL.moss, pill: 'rgba(255,255,255,.55)', map: { ochre: COL.ochre, coral: COL.coral } },

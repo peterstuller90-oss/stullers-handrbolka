@@ -99,7 +99,7 @@ input[type=range]{width:100%;accent-color:var(--green)}
 .player output{font-variant-numeric:tabular-nums;font-size:13px;color:var(--muted);width:44px;text-align:right}
 .sec h3{margin:0 0 4px;font-weight:700;font-size:17px}
 .sec p.hint{margin-bottom:10px}
-.muts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;align-items:end}
+.muts{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px;align-items:end}
 .mut{display:flex;flex-direction:column;gap:6px;min-width:0}
 .mut .th{background:var(--sunk);border-radius:12px;padding:10px;display:grid;place-items:center;border:2px solid transparent;cursor:pointer;position:relative}
 .mut.on .th{border-color:var(--green)}
@@ -117,6 +117,9 @@ input[type=range]{width:100%;accent-color:var(--green)}
 .menu .pop button{border:0;background:none;text-align:left;padding:9px 12px;border-radius:9px;display:flex;justify-content:space-between;gap:12px;font-weight:600}
 .menu .pop button small{color:var(--muted);font-weight:500}
 .menu .pop button:hover{background:var(--sunk)}
+.menu .pop .fname{padding:8px 12px 4px}
+.menu .pop .fname input{font-weight:600;color:var(--ink)}
+.menu .pop .fname small{font-weight:500;color:var(--muted);font-size:12px;word-break:break-all}
 .menu .pop hr{border:0;border-top:1px solid var(--line);margin:4px 0}
 .saved{padding-block:24px 60px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));max-width:1200px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
 .saved h1{margin:0;font-size:28px;font-weight:700}
@@ -179,11 +182,14 @@ input[type=range]{width:100%;accent-color:var(--green)}
   <div class="menu">
     <button class="btn primary" id="expBtn" aria-haspopup="true" aria-expanded="false">Exportovať ▾</button>
     <div class="pop" id="expPop" hidden>
+      <label class="f fname">Téma v názve súboru<input type="text" id="fileTheme" autocomplete="off" spellcheck="false"><small id="fileEx"></small></label>
+      <hr>
       <button data-exp="post">Insta post <small>PNG, 72 dpi</small></button>
+      <button data-exp="igvid">Insta video <small>MP4, 1080 × 1350</small></button>
       <button data-exp="story">Insta story <small>PNG, 72 dpi</small></button>
+      <button data-exp="reel">Story / reel video <small>MP4, 1080 × 1920</small></button>
       <button data-exp="a4">Plagát A4 <small>PDF na tlač, vektory + 300 dpi</small></button>
       <button data-exp="a3">Plagát A3 <small>PDF na tlač, vektory + 300 dpi</small></button>
-      <button data-exp="reel">Reel intro <small>MP4 video</small></button>
       <hr>
       <button data-exp="all">Všetko naraz <small>ZIP</small></button>
       <label class="check" style="padding:8px 12px"><input type="checkbox" id="bleed"> Tlač: spadávka 3 mm + orezové značky</label>
@@ -281,7 +287,7 @@ input[type=range]{width:100%;accent-color:var(--green)}
         <label class="check"><input type="checkbox" id="animTitle"> Hlavný nadpis</label>
         <label class="check"><input type="checkbox" id="animSub"> Podnadpis alebo dátum</label>
       </div>
-      <p class="hint">Intro má rozmer reelu 1080 × 1920 a exportuje sa ako MP4. Na Instagrame ho pridáš ako prvý klip pred svoje video. Logo sa najprv nakreslí po kúskoch ako detská kresba, potom vyrastie nápis Handrbolka.</p>
+      <p class="hint">Video sa exportuje ako MP4 v dvoch rozmeroch: na post 1080 × 1350 a na story alebo reel 1080 × 1920. Na Instagrame ho pridáš ako prvý klip pred svoje video. Logo sa najprv nakreslí po kúskoch ako detská kresba, potom vyrastie nápis Handrbolka.</p>
       <button class="btn" id="goReel" style="align-self:flex-start">▶ Prehrať intro</button>
     </div>
   </aside>

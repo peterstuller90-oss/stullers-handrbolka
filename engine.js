@@ -200,9 +200,24 @@ const HB = (() => {
     let photoImg = opt.photoImg;
     const photoInFlow = photoImg !== undefined && st.photo.on && st.bg !== 'foto';
 
-    let items, total, k = 1, grown = false;
+    const elemItem = (b, k) => {
+      const sz = clamp(+b.size || (b.type === 'qr' ? .32 : .5), .12, 1);
+      if (b.type === 'qr') {
+        if (!String(b.text || '').trim()) return null;
+        const w = Math.min(cw, H * .5) * sz * k; const pad = w * .07;
+        const capSize = b.cap && String(b.cap).trim() ? Math.max(22 * u, w * .11) : 0;
+        return { type: 'qr', text: String(b.text).trim(), cap: capSize ? String(b.cap).trim() : '', capSize, qw: w, pad, w: w + pad * 2, tw: w + pad * 2, h: w + pad * 2 + (capSize ? capSize * 1.6 : 0), gap: 44 * u * k };
+      }
+      if (!b.img) return null;
+      const im = blockImg(b.img);
+      const ar = im ? im.naturalHeight / im.naturalWidth : 1;
+      let w = cw * sz * k, h = w * ar;
+      const maxH = availH * .6; if (h > maxH) { h = maxH; w = h / ar; }
+      return { type: 'obrazok', img: im, w, tw: w, h, gap: 44 * u * k };
+    };
+    let items, total, k = 1, grown = false, freeB = [];
     for (let iter = 0; iter < 14; iter++) {
-      items = []; total = 0;
+      items = []; total = 0; freeB = [];
       const add = it => { items.push(it); };
       // logo
       const lm = st.logo.mode;
@@ -228,19 +243,8 @@ const HB = (() => {
       if (photoFirst) photoItem();
       blocks.forEach((b, i) => {
         if (b.type === 'qr' || b.type === 'obrazok') {
-          const sz = clamp(+b.size || (b.type === 'qr' ? .32 : .5), .12, 1);
-          if (b.type === 'qr') {
-            if (!String(b.text || '').trim()) return;
-            const w = Math.min(cw, H * .5) * sz * k; const pad = w * .07;
-            const capSize = b.cap && String(b.cap).trim() ? Math.max(22 * u, w * .11) : 0;
-            add({ type: 'qr', text: String(b.text).trim(), cap: capSize ? String(b.cap).trim() : '', capSize, qw: w, pad, w: w + pad * 2, tw: w + pad * 2, h: w + pad * 2 + (capSize ? capSize * 1.6 : 0), gap: 44 * u * k });
-          } else {
-            const im = blockImg(b.img); if (!b.img) return;
-            const ar = im ? im.naturalHeight / im.naturalWidth : 1;
-            let w = cw * sz * k, h = w * ar;
-            const maxH = availH * .6; if (h > maxH) { h = maxH; w = h / ar; }
-            add({ type: 'obrazok', img: im, w, tw: w, h, gap: 44 * u * k });
-          }
+          if (b.free) { freeB.push([b, i]); return; }
+          const it = elemItem(b, k); if (it) { it.bi = i; add(it); }
           return;
         }
         const B = BLOCK[b.type]; if (!B) return;
@@ -295,6 +299,15 @@ const HB = (() => {
       it.x = left ? side : (W - w) / 2;
       rects.push({ x: it.x - W * .02, y: y - H * .008, w: w + W * .04, h: it.h + H * .016, type: it.type });
       y += it.h + it.gap;
+    });
+    // voľne posunuté QR kódy a obrázky (stred v pomere k šírke a výške)
+    freeB.forEach(([b, i]) => {
+      const it = elemItem(b, 1); if (!it) return;
+      it.bi = i; it.free = true;
+      it.x = clamp((+b.fx || .5) * W - it.w / 2, 0, W - it.w);
+      it.y = clamp((+b.fy || .5) * H - it.h / 2, 0, H - it.h);
+      items.push(it);
+      rects.push({ x: it.x - W * .02, y: it.y - H * .008, w: it.w + W * .04, h: it.h + H * .016, type: it.type });
     });
     const foot = footH ? { y: footY, h: footH } : null;
     if (foot) rects.push({ x: footer ? side * .6 : W * .2, y: footY - H * .01, w: footer ? W - side * 1.2 : W * .6, h: footH + H * .02, type: 'foot' });
@@ -416,19 +429,19 @@ const HB = (() => {
         break;
       }
       case 'qr': {
-        const x = L.left ? it.x : (W - it.w) / 2;
+        const x = it.x;
         ctx.fillStyle = '#FFFFFF'; roundRect(ctx, x, it.y, it.w, it.w, it.pad * 1.2); ctx.fill();
         drawQR(ctx, it.text, x + it.pad, it.y + it.pad, it.qw, COL.green);
         if (it.cap) {
           ctx.font = font(600, it.capSize); ctx.fillStyle = th.ink; ctx.textBaseline = 'alphabetic';
           const cw2 = ctx.measureText(it.cap).width;
-          ctx.fillText(it.cap, L.left ? x : (W - cw2) / 2, it.y + it.w + it.capSize * 1.25);
+          ctx.fillText(it.cap, L.left && !it.free ? x : x + (it.w - cw2) / 2, it.y + it.w + it.capSize * 1.25);
         }
         break;
       }
       case 'obrazok': {
         if (!it.img) break;
-        const x = L.left ? it.x : (W - it.w) / 2;
+        const x = it.x;
         ctx.drawImage(it.img, x, it.y, it.w, it.h);
         break;
       }

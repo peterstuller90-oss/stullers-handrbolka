@@ -157,6 +157,12 @@ input[type=range]{width:100%;accent-color:var(--green)}
   .stage>.sec:nth-child(3){order:4;padding-top:24px;border-top:1px solid var(--line)}
   .stage>.sec:nth-child(4){order:5;padding-top:16px;padding-bottom:48px}
   .muts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  /* export na mobile ako panel zospodu cez celú šírku */
+  .menu .pop{position:fixed;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));top:auto;bottom:calc(12px + env(safe-area-inset-bottom,0px));min-width:0;z-index:40;padding:8px;
+    box-shadow:0 0 0 100vmax rgba(10,20,15,.45),0 12px 34px rgba(0,0,0,.35);max-height:calc(100dvh - 40px);overflow:auto}
+  .menu .pop button{padding:13px 12px;font-size:16px}
+  .menu .pop button small{font-size:13px;text-align:right}
+  .menu .pop .check{font-size:15px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -169,6 +175,7 @@ input[type=range]{width:100%;accent-color:var(--green)}
   </div>
   <button class="btn" id="shuffle" title="Nové rozmiestnenie kresbičiek">Nová variácia</button>
   <button class="btn" id="saveBtn">Uložiť</button>
+  <button class="btn" id="saveNewBtn" hidden title="Uloží aktuálny stav ako ďalší návrh, pôvodný ostane">Uložiť ako nový</button>
   <div class="menu">
     <button class="btn primary" id="expBtn" aria-haspopup="true" aria-expanded="false">Exportovať ▾</button>
     <div class="pop" id="expPop" hidden>
@@ -219,7 +226,7 @@ input[type=range]{width:100%;accent-color:var(--green)}
           <button data-add="qr">+ QR kód</button>
           <button data-add="obrazok">+ Obrázok</button>
         </div>
-        <p class="hint">Nový riadok spravíš klávesom Enter. Pri odrážkach je každý riadok jedna odrážka. Poradie meníš šípkami, rovnako aj pri QR kódoch a obrázkoch.</p>
+        <p class="hint">Nový riadok spravíš klávesom Enter. Pri odrážkach je každý riadok jedna odrážka. Poradie meníš šípkami. QR kód alebo obrázok môžeš aj chytiť prstom v náhľade a posunúť kamkoľvek.</p>
       </div>
       <div class="group">
         <h3>Logo</h3>

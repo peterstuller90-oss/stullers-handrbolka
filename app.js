@@ -124,9 +124,10 @@ function sizeMain() {
   mainC.width = Math.round(fmt.W * k); mainC.height = Math.round(fmt.H * k);
 }
 let playing = false, playT0 = 0, scrubT = null;
+let mainL = null;
 function renderMain() {
   const fmt = F[cur];
-  drawTo(mainC, cur, fmt.anim ? { t: scrubT ?? st.anim.dur } : {});
+  mainL = drawTo(mainC, cur, fmt.anim ? { t: scrubT ?? st.anim.dur } : {});
   if ($('safeOn').checked && fmt.safeTop) {
     const ctx = mainC.getContext('2d'); const sc = mainC.width / fmt.W;
     ctx.setTransform(sc, 0, 0, sc, 0, 0); ctx.fillStyle = 'rgba(235,95,95,.18)';
@@ -191,6 +192,34 @@ function selectFormat(k) {
   sizeMain(); renderMain(); renderVarsDebounced();
 }
 
+/* QR kódy a obrázky sa dajú potiahnuť priamo v náhľade */
+let drag = null;
+function hitElem(pt) {
+  if (!mainL || F[cur].anim) return null;
+  const r = mainC.getBoundingClientRect(), fmt = F[cur];
+  const x = (pt.clientX - r.left) / r.width * fmt.W, y = (pt.clientY - r.top) / r.height * fmt.H;
+  const its = mainL.items.filter(it => (it.type === 'qr' || it.type === 'obrazok') && it.bi != null);
+  for (let j = its.length - 1; j >= 0; j--) { const it = its[j]; if (x >= it.x && x <= it.x + it.w && y >= it.y && y <= it.y + it.h) return { it, x, y }; }
+  return null;
+}
+mainC.addEventListener('touchstart', e => { if (e.touches.length === 1 && hitElem(e.touches[0])) e.preventDefault(); }, { passive: false });
+mainC.addEventListener('pointerdown', e => {
+  const h = hitElem(e); if (!h) return;
+  const b = st.blocks[h.it.bi]; if (!b) return;
+  e.preventDefault(); mainC.setPointerCapture(e.pointerId);
+  drag = { b, ox: h.x - (h.it.x + h.it.w / 2), oy: h.y - (h.it.y + h.it.h / 2), moved: false };
+  mainC.style.cursor = 'grabbing';
+});
+mainC.addEventListener('pointermove', e => {
+  if (!drag) { mainC.style.cursor = hitElem(e) ? 'grab' : ''; return; }
+  const r = mainC.getBoundingClientRect();
+  const fx = (e.clientX - r.left) / r.width - drag.ox / F[cur].W, fy = (e.clientY - r.top) / r.height - drag.oy / F[cur].H;
+  drag.b.free = true; drag.b.fx = Math.max(0, Math.min(1, fx)); drag.b.fy = Math.max(0, Math.min(1, fy)); drag.moved = true;
+  renderAll(false);
+});
+const endDrag = () => { if (!drag) return; const m = drag.moved; drag = null; mainC.style.cursor = ''; if (m) { buildBlocks(); renderVarsDebounced(); } };
+mainC.addEventListener('pointerup', endDrag); mainC.addEventListener('pointercancel', endDrag);
+
 /* mobil: rýchly prepínač formátu a veľkosti v pripnutom náhľade */
 Object.values(F).forEach(fmt => {
   const b = document.createElement('button'); b.dataset.fmt = fmt.key; b.textContent = { post: 'Post', story: 'Story', a4: 'A4', a3: 'A3', reel: 'Reel' }[fmt.key] || fmt.name; b.setAttribute('aria-pressed', 'false');
@@ -246,12 +275,17 @@ function buildBlocks() {
       el.classList.add('elem');
       const nm = document.createElement('b'); nm.className = 'enm'; nm.textContent = ELEMS[b.type];
       bh.append(nm, sp, ...moveIcons(i)); el.appendChild(bh);
+      const pos = document.createElement('div'); pos.className = 'row';
+      const ph = document.createElement('span'); ph.className = 'hint'; ph.style.flex = '1';
+      ph.textContent = b.free ? 'Umiestnený voľne. Potiahni ho v náhľade.' : 'Je v poradí s textami. Môžeš ho potiahnuť v náhľade kamkoľvek.';
+      pos.appendChild(ph);
+      if (b.free) { const rb = document.createElement('button'); rb.className = 'btn small'; rb.textContent = 'Vrátiť medzi texty'; rb.onclick = () => { b.free = false; delete b.fx; delete b.fy; buildBlocks(); renderAll(); }; pos.appendChild(rb); }
       if (b.type === 'qr') {
         const u = document.createElement('input'); u.type = 'text'; u.id = 'bx' + i; u.value = b.text || ''; u.placeholder = 'Odkaz, napr. https://handrbolka.sk'; u.setAttribute('aria-label', 'Odkaz v QR kóde'); u.inputMode = 'url';
         u.oninput = () => { b.text = u.value; renderAll(false); renderVarsDebounced(); };
         const c = document.createElement('input'); c.type = 'text'; c.value = b.cap || ''; c.placeholder = 'Popis pod kódom (nepovinné)'; c.setAttribute('aria-label', 'Popis pod QR kódom');
         c.oninput = () => { b.cap = c.value; renderAll(false); renderVarsDebounced(); };
-        el.append(u, c, sizeSlider(b, i, .32));
+        el.append(u, c, sizeSlider(b, i, .32), pos);
       } else {
         const row = document.createElement('div'); row.className = 'drop';
         const im = document.createElement('img'); im.alt = ''; if (b.img) im.src = b.img; else im.hidden = true;
@@ -259,7 +293,7 @@ function buildBlocks() {
         const bt = document.createElement('button'); bt.className = 'btn small'; bt.textContent = b.img ? 'Zmeniť obrázok' : 'Vybrať obrázok'; bt.onclick = () => fi.click();
         const tx = document.createElement('div'); tx.style.flex = '1'; tx.append('Logo partnera, nálepka, kresba… PNG s priehľadným pozadím ostane priehľadné. ', bt);
         fi.onchange = () => readElemImage(fi.files[0], data => { b.img = data; buildBlocks(); renderAll(); });
-        row.append(im, tx, fi); el.append(row, sizeSlider(b, i, .5));
+        row.append(im, tx, fi); el.append(row, sizeSlider(b, i, .5), pos);
       }
       box.appendChild(el); return;
     }
@@ -449,7 +483,7 @@ $('briefBtn').onclick = async () => {
   $('briefBtn').disabled = true; $('briefState').textContent = 'Claude pripravuje návrh…'; $('briefNote').hidden = true;
   try {
     const r = await askClaude(brief);
-    st = applyBrief(r || {}); currentId = null;
+    st = applyBrief(r || {}); currentId = null; syncSave();
     syncUI(); renderAll(); selectFormat(cur === 'reel' ? 'post' : cur);
     $('briefNote').textContent = (r && r.poznamka ? r.poznamka + ' ' : '') + (st.photo.on && !photoImg ? 'Nahraj ešte fotku nižšie.' : 'Čokoľvek nižšie môžeš zmeniť.');
     $('briefNote').hidden = false; $('briefState').textContent = '';
@@ -466,7 +500,7 @@ try { const b = localStorage.getItem('hb_brief'); if (b) $('brief').value = b; }
 
 /* šablóny */
 Object.entries(TEMPLATES).forEach(([k, t]) => { const o = document.createElement('option'); o.value = k; o.textContent = t.name; $('tpl').appendChild(o); });
-$('tpl').onchange = e => { if (!e.target.value) return; const keepPhoto = st.photo; st = fromTemplate(e.target.value); if (photoImg) st.photo = { ...st.photo, zoom: keepPhoto.zoom, x: keepPhoto.x, y: keepPhoto.y }; currentId = null; e.target.value = ''; syncUI(); renderAll(); toast('Šablóna načítaná'); };
+$('tpl').onchange = e => { if (!e.target.value) return; const keepPhoto = st.photo; st = fromTemplate(e.target.value); if (photoImg) st.photo = { ...st.photo, zoom: keepPhoto.zoom, x: keepPhoto.x, y: keepPhoto.y }; currentId = null; syncSave(); e.target.value = ''; syncUI(); renderAll(); toast('Šablóna načítaná'); };
 
 /* záložky */
 document.querySelectorAll('[role=tab]').forEach(t => t.onclick = () => {
@@ -669,11 +703,24 @@ $('expMain').onclick = () => exportOne(cur);
 
 /* ---------- uloženie návrhov ---------- */
 function thumb() { const c = document.createElement('canvas'); c.width = 360; c.height = 450; drawTo(c, 'post'); return c.toDataURL('image/jpeg', .8); }
-$('saveBtn').onclick = async () => {
-  const name = (st.blocks.find(b => b.text.trim())?.text || 'Návrh').split('\n')[0].slice(0, 60);
-  const d = { id: currentId || 'l_' + Date.now(), name, state: st, photo: photoData, thumb: thumb(), updated: new Date().toISOString() };
-  try { await Store.impl.save(d); currentId = d.id; toast('Návrh uložený'); } catch (e) { toast('Uloženie sa nepodarilo: ' + (e.message || e)); }
-};
+async function saveDesign(asNew) {
+  const base = (st.blocks.find(b => (b.text || '').trim())?.text || 'Návrh').split('\n')[0].slice(0, 50);
+  let name = base;
+  if (asNew && currentId) { // nový variant vedľa pôvodného
+    let n = 2; try { const list = await Store.impl.list(); const re = new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ' · variant (\\d+)$'); list.forEach(d => { const m = (d.name || '').match(re); if (m) n = Math.max(n, +m[1] + 1); }); } catch (e) {}
+    name = base + ' · variant ' + n;
+  }
+  const id = asNew || !currentId ? 'l_' + Date.now() : currentId;
+  const d = { id, name, state: st, photo: photoData, thumb: thumb(), updated: new Date().toISOString() };
+  try { await Store.impl.save(d); currentId = d.id; savedName = name; syncSave(); toast(asNew ? 'Uložené ako nový návrh: ' + name : 'Zmeny uložené'); } catch (e) { toast('Uloženie sa nepodarilo: ' + (e.message || e)); }
+}
+let savedName = '';
+function syncSave() {
+  $('saveBtn').textContent = currentId ? 'Uložiť zmeny' : 'Uložiť';
+  $('saveNewBtn').hidden = !currentId;
+}
+$('saveBtn').onclick = () => saveDesign(false);
+$('saveNewBtn').onclick = () => saveDesign(true);
 async function showSaved() {
   const g = $('sgrid'); g.innerHTML = '<p class="hint">Načítavam…</p>';
   $('savedHint').textContent = Store.impl.kind === 'supabase' ? 'Návrhy sú uložené online, uvidíš ich na každom zariadení.' : 'Návrhy sú uložené len v tomto prehliadači.';
@@ -688,11 +735,11 @@ async function showSaved() {
     const sm = document.createElement('small'); sm.textContent = new Date(d.updated || d.updated_at).toLocaleString('sk-SK', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     const row = document.createElement('div'); row.className = 'row';
     const open = document.createElement('button'); open.className = 'btn small primary'; open.textContent = 'Otvoriť';
-    open.onclick = () => { st = Object.assign(BASE(), d.state); st.logo = { ...BASE().logo, ...d.state.logo }; st.footer = { ...BASE().footer, ...d.state.footer }; currentId = d.id; setPhoto(d.photo || null); syncUI(); setView('edit'); renderAll(); };
+    open.onclick = () => { st = Object.assign(BASE(), d.state); st.logo = { ...BASE().logo, ...d.state.logo }; st.footer = { ...BASE().footer, ...d.state.footer }; currentId = d.id; savedName = d.name; syncSave(); setPhoto(d.photo || null); syncUI(); setView('edit'); renderAll(); toast('Otvorený návrh. Uložiť ako nový ho neprepíše.'); };
     const copy = document.createElement('button'); copy.className = 'btn small'; copy.textContent = 'Kópia';
     copy.onclick = async () => { await Store.impl.save({ ...d, id: 'l_' + Date.now(), name: d.name + ' (kópia)', updated: new Date().toISOString() }); showSaved(); };
     const del = document.createElement('button'); del.className = 'btn small'; del.textContent = 'Zmazať';
-    del.onclick = async () => { if (del.dataset.sure) { await Store.impl.remove(d.id); if (currentId === d.id) currentId = null; showSaved(); } else { del.dataset.sure = 1; del.textContent = 'Naozaj zmazať?'; } };
+    del.onclick = async () => { if (del.dataset.sure) { await Store.impl.remove(d.id); if (currentId === d.id) { currentId = null; syncSave(); } showSaved(); } else { del.dataset.sure = 1; del.textContent = 'Naozaj zmazať?'; } };
     row.append(open, copy, del); it.append(img, b, sm, row); g.appendChild(it);
   });
 }
@@ -731,7 +778,7 @@ async function start() {
   await loadFonts();
   restoreDraft();
   brand();
-  syncUI(); buildMuts(); selectFormat('post'); renderMuts(); renderVars();
+  syncSave(); syncUI(); buildMuts(); selectFormat('post'); renderMuts(); renderVars();
 }
 window.HBApp = { build, fullCanvas, pdfNote, get pdfReport() { return lastPdfReport; } }; // pre testy
 start();
